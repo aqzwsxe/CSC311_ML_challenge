@@ -1,213 +1,172 @@
+import numpy as np
+import random
 import sys
 import csv
-import random
-
-# numpy and pandas are also permitted
-import numpy
 import pandas as pd
-from sklearn.linear_model import  LogisticRegression
-
 import re
-import pandas as pd
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LinearRegression
-import  numpy as np
 
+cities = ["Dubai",  "New York City",  "Paris",  "Rio de Janeiro"]
 
-random_state = 42
-vocab = []
-
-def predict_all(file_name):
-    #  dataFrame: a two-dimensional labeled data structure in Pandas
-    # key features of a DataFrame:
-    # Indexing: Each row in a Df is associated with an index, which can be either integer based or labeled;
-    # The index provides a way to uniquely identify each row
-
-    # Column: in a DataFrame represent variable or attribute
-
-    # df = data
-    df = pd.read_csv(file_name)
-    vocab = []
-    # Clean numerics
-
-    # Access a column names Q6 from the DateFrame df
-    df["Q7"] = df["Q7"].apply(to_numeric).fillna(0)
-    #  apply in pandas: apply a functions along an axis of dataFrame or Series
-    # to_numeric: is a function that converts its input that convert its input to a numeric type(float)
-    # .fillna(0): in pandas it is used to fill missing(NAN) values in a DataFrame or Series with
-    # a specific value. In this case, 0
-    # Clean for number categories
-
-    df["Q1"] = df["Q1"].apply(get_number)
-
-    # Create area rank categories
-
-    df["Q6"] = df["Q6"].apply(get_number_list_clean)
-
-    # It is created to store the names of new columns
-    # that will be added to the DataFrame df.
-
-    temp_names = []
-    for i in range(1, 7):
-        # The new column name
-        col_name = f"rank_{i}"
-        # embedded the i to the string rank_{}
-        temp_names.append(col_name)
-        # l represent a single element of Q6
-        # The element of Q6:
-        # Skyscrapers=>6,Sport=>4,Art and Music=>2,Carnival=>1,Cuisine=>3,Economic=>5
-        df[col_name] = df["Q6"].apply(lambda l: find_area_at_rank(l, i))
-        # lambda l: find_area_at_rank(l, i); A lambda function
-    # remove the column named Q6 from DataFrame df
-    del df["Q6"]
-
-    # Create category indicators
-
-    new_names = []
-    # Create a new list contains ["Q1", "rank1", "rank2" ...]
-
-    # After each iteration, the col inside the ["Q1"] + temp_names
-    # will be deleted and some indicators which is specified by the col will be added to the df
-    for col in ["Q1"] + temp_names:
-        # create dummy variable; dummy variable=indicator variable
-        #  prefix parameter is used to add a prefix to the column name of the dummy variables created
-        indicators = pd.get_dummies(df[col], prefix=col)
-        # Each row of the indicator is a one-hot vector
-        # add the column name of the indicators DataFrame
-        new_names.extend(indicators.columns)
-        # Concatenates the DataFrame indicators to the existing
-        # DataFrame df along the column axis, axis=1;
-        df = pd.concat([df, indicators], axis=1)
-        del df[col]
-
-    # Create multi-category indicators
-
-    for cat in ["Partner", "Friends", "Siblings", "Co-worker"]:
-        cat_name = f"Q5{cat}"
-        new_names.append(cat_name)
-        df[cat_name] = df["Q5"].apply(lambda s: cat_in_s(s, cat))
-
-    del df["Q5"]
-
-    # Prepare data for training - use a simple train/test split for now
-
-    # Reorders the columns of the DataFrame df
-    # It selects the column specified in new_names(contain the names of the one-hot encoded columns created earlier)
-    # The one-hot encoded column come first
-    # followed  by Q7 and Label
-    df = df[new_names + ["Q7", "Label"]]
-    # shuffles the rows (specified by frac=1) of the DataFrame df using the
-    # sample function
-    # Setting the random_state to a specific value ensure that the random shuffling of rows is
-    # reproducible
-    df = df.sample(frac=1, random_state=random_state)
-
-    # 1. drop() Make a copy of the df and delete the values of df col='Label', then return the new DF
-    # 2. Assign the resulting DF without the Label column to the variable x
-    # 3. Convert the DF into a NP array using the .values attribute
-
-    # x: contain the input features for the ml model. It is obtained
-    # by dropping the column labelled "Label"
-    x = df.drop("Label", axis=1).values
-
-    # contains the target labels for the ml model
-    # It is obtained by applying one hot encoding to the
-    # values in the Label column
-    # Each unique label column of the DataFrame df using
-    y = pd.get_dummies(df["Label"].values)
-
-    # Specify the number of samples to be used for training the model
-    n_train = 1200
-    # Extracts the first n_train samples from the feature matrix x and
-    # assigns them to x_train. Those
-    x_train = x[:n_train]
-    # select the first 1200 target
-    y_train = y[:n_train]
-    # print(np.shape(y_train))
-    # The rest of data and label
-    x_test = x[n_train:]
-    y_test = y[n_train:]
-    # print(np.shape(y_test))
-    # Train and evaluate classifiers
-    i = 0
-    for row in x_train:
-        print(f"start of line {i}")
-        print(row)
-        print(f"end of line {i}")
-        i += 1
-        if i > 10:
-            break
 
 def to_numeric(s):
-    """Converts string `s` to a float.
-
-    Invalid strings and NaN values will be converted to float('nan').
-    """
-
     if isinstance(s, str):
         s = s.replace(",", '')
         s = pd.to_numeric(s, errors="coerce")
     return float(s)
 
 def get_number_list(s):
-    """Get a list of integers contained in string `s`
-        \d: match any digit from 0 to 9
-        +: \d should match one or more times
-        findall: returns a list of all non-overlapping matches of the pattern in
-        the input string; Each match is represented as a string
-        and return as a list
-    """
     return [int(n) for n in re.findall("(\d+)", str(s))]
 
 def get_number_list_clean(s):
-    """Return a clean list of numbers contained in `s`.
-
-    Additional cleaning includes removing numbers that are not of interest
-    and standardizing return list size.
-
-    Appends -1 to the n_list multiple times to standardize its size to 6 element
-
-    If the original list n_list has fewer tha 6 elements,
-    it adds enough -1 values to make its length 6
-    """
-
     n_list = get_number_list(s)
     n_list += [-1]*(6-len(n_list))
     return n_list
 
 def get_number(s):
-    """Get the first number contained in string `s`.
-
-    If `s` does not contain any numbers, return -1.
-    """
     n_list = get_number_list(s)
     return n_list[0] if len(n_list) >= 1 else -1
 
 def find_area_at_rank(l, i):
-    """Return the area at a certain rank in list `l`.
-
-    Areas are indexed starting at 1 as ordered in the survey.
-
-    If area is not present in `l`, return -1.
-
-    It returns the position of the element i in the list l, indicating its rank
-    the area starting at 1 not 0
-    """
     return l.index(i) + 1 if i in l else -1
 
 def cat_in_s(s, cat):
-    """Return if a category is present in string `s` as an binary integer.
-
-    check if the category cat is present in the string s
-    If cat is present in s, it becomes 1
-    """
     return int(cat in s) if not pd.isna(s) else 0
 
+def process_data(df):
+    del df["id"]
+    del df["Q10"]
+
+    for i in range(1, 5):
+        col_name = f"Q{i}"
+        df[col_name] = df[col_name].apply(to_numeric).fillna(0)
+    
+    for i in range(7, 10):
+        col_name = f"Q{i}"
+        df[col_name] = df[col_name].apply(to_numeric).fillna(0) 
+
+    df["Q6"] = df["Q6"].apply(get_number_list_clean)
+    for i in range(1, 7):
+        col_name = f"rank_{i}"
+        df[col_name] = df["Q6"].apply(lambda x: find_area_at_rank(x, i))
+    
+    del df["Q6"]
+
+    for cat in ["Partner", "Friends", "Siblings", "Co-worker"]:
+      cat_name = f"Q5{cat}"
+      df[cat_name] = df["Q5"].apply(lambda s: cat_in_s(s, cat))
+
+    del df["Q5"]
+    y = pd.get_dummies(df["Label"].values)
+    X = df.drop("Label", axis=1).values
+    return X, y
+
+class MLPModel(object):
+    def __init__(self, num_features=17, num_hidden_1=15, num_hidden_2 = 15, num_hidden_3= 6, num_classes=4):
+
+        self.num_features = num_features
+        self.num_hidden_1 = num_hidden_1
+        self.num_hidden_2 = num_hidden_2
+        self.num_hidden_3 = num_hidden_3
+        self.num_classes = num_classes
+
+        self.W1 = np.zeros([num_features, num_hidden_1])
+        self.b1 = np.zeros([num_hidden_1])
+
+        self.W2 = np.zeros([num_hidden_1, num_hidden_2])
+        self.b2 = np.zeros([num_hidden_2])
+
+        self.W3 = np.zeros([num_hidden_2, num_hidden_3])
+        self.b3 = np.zeros([num_hidden_3])
+
+        self.W4 = np.zeros([num_hidden_3, num_classes])
+        self.b4 = np.zeros([num_classes])
+
+        self.initializeParams()
+
+        # set all values of intermediate variables (to be used in the
+        # forward/backward passes) to None
+        self.cleanup()
+
+    def initializeParams(self):
+        self.W1 = np.array([[ 0.04382962, -0.178997,   0.47615388,  0.01481786, -0.32289454,  0.06156468, -0.01063139, -0.05832597, -0.1388179,  -0.17547734, -0.24573572,  0.3100476, 0.38802463,  0.14645335, -0.1603041,   0.15156399, -0.21504608],
+                   [-0.06456511,  0.31675962,  0.16512252, -0.46579394, -0.04908067,  0.02311553, -0.22564758,  0.05000786,  0.05331955, -0.04506588, -0.19452536, -0.02004012, -0.36183676, -0.01579478,  0.08827799, -0.10760634, -0.02388171],
+                   [-0.03381607 , 0.3450903,  -0.23965928,  0.17453913, -0.4766752,  -0.3894184, 0.05620765,  0.19428048,  0.02659343, -0.1857995,  -0.01510143,  0.05348418, -0.1817375,  -0.17747578,  0.08576353,  0.17951623,  0.30455413],
+                   [ 0.43477482, -0.02299175,  0.03353853, -0.15122576, -0.27515963, -0.6516631, 0.01625663, -0.04703632,  0.07564616,  0.088167,    0.29053465,  0.21262252, -0.18011956,  0.2635824,  -0.20701577, -0.2776992,  -0.18424344],
+                   [ 0.15883607, -0.03188621, -0.1789141,  -0.06190687,  0.00650106, -0.01604413,  0.10972814,  0.24149053,  0.03258596,  0.04086794,  0.05056156, -0.2753374, 0.62654227, -0.0036368 , -0.03294291,  0.09548701, -0.09780367],
+                   [-0.04822391, -0.0114488 ,  0.26914334, -0.06665711,  0.53875875,  0.20626374, -0.6003902,  -0.18096903,  0.00926787, -0.11487705,  0.08452826 , 0.20601141, 0.12252454, -0.12101196, -0.11034518,  0.09608772,  0.04530153],
+                   [ 0.32600525, -0.05988604,  0.588798,   -0.11638672,  0.25372082, -0.00357376, -0.37262437, -0.07579663, -0.07402832,  0.10788435,  0.0279115,  -0.14268026, 0.2045548,  -0.22432739,  0.03185864,  0.13700661, 0.13097179],
+                   [-0.00326033,  0.14800781, -0.20358473, -0.17571856 , 0.19947541 , 0.11061399, -0.07343424,  0.18384087,  0.00253974,  0.1421866,  -0.04681084,  0.45413288, -0.18849209,  0.09695654,  0.18937913,  0.03186786, -0.02378056],
+                   [-0.10654937,  0.15635651,  0.17128462 ,-0.14242171,  0.18065427,  0.08010846, 0.2154145,   0.01150498,  0.01585075, -0.01703003,  0.285941,    0.4667194, -0.42491233,  0.09414089, -0.31069642,  0.0277325,   0.07456262],
+                   [ 0.2055624,   0.16442332, -0.04992673, -0.1722051 , -0.5463364 ,  0.15788819, -0.04594326,  0.03448833, -0.10334666, -0.0375798,  -0.10158344,  0.04582461, 0.1315659,  -0.0389955,  -0.12496642, -0.08064942,  0.16116822],
+                   [-0.23817553, -0.28547186, -0.25023994, -0.06962764, -0.375389 ,  -0.05507776,  0.15549265, -0.08275548, -0.07486727, -0.2976628,   0.08335926, -0.02563223,  0.00261928,  0.05600661,  0.04074392, -0.08144628, -0.25422084],
+                   [ 0.55097705,  0.3575651,  -0.13182393,  0.01385657 ,-0.4058804  , 0.04945606, -0.2292238,  -0.14962356,  0.03673283,  0.2887634,   0.1536564,   0.01276512, 0.04405534, -0.1071756,   0.07993758,  0.23011303,  0.34567064],
+                   [-0.18863292, -0.05793514, -0.27366245,  0.56584775 , 0.49165592, -0.7081579, -0.12526628,  0.00866841,  0.04811249,  0.04628688, -0.05957801,  0.07249291, 0.00397535, -0.00688335,  0.02738149,  0.05058184, -0.08047724],
+                   [-0.14792433, -0.13081111, -0.05611071,  0.49932396,  0.43832055, -0.7923425, -0.12237884,  0.06129831, -0.02658675,  0.21275456,  0.16262272,  0.00158137, -0.10166571, -0.04284821, -0.05955264 , 0.01901672,  0.00388058],
+                   [-0.22883248,  0.31797937, -0.01727103, -0.01465055 , 0.11114325,  0.17408438, -0.1169855,   0.12341553,  0.05104778,  0.10174494,  0.15025562, -0.03854594, 0.2324355,   0.12762709, -0.09848844, -0.1401105,  -0.12034509]])
+        self.b1 = np.array([ 0.08241272,  0.41280526,  0.29584834, -0.04017327, -0.1600255,   0.21386038, -0.1782269,  -0.17816325, -0.19625124,  0.34326246,  0.21813075,  0.25690305, 0.01997817, -0.02919092, -0.06337898])
+        self.W2 = np.array([[-0.36887288,  0.14754157,  0.3100175,  0.1295097,  -0.35512125, -0.42911696, -0.352385,    0.1043374,   0.10747547,  0.14485466, -0.24469325 , 0.17121002, 0.09122696, -0.63328356 ,-0.07810429],
+                   [-0.11363944,  0.18666545,  0.3921304,  -0.03121522,  0.68673956,  0.12254468, -0.13348241,  0.22309962, 0.0682776,   0.10045741 , 0.09145454 , 0.47322303 , -0.07671854 ,-0.05246736 , 0.18493581],
+                   [ 0.06345236, -0.05408503, -0.06489914,  0.23199359,  0.23793027,  0.07797586, 0.2374543,   0.14755934,  0.3640936,  -0.18676162 , 0.02331572 ,-0.16513248 ,0.0334722 ,  0.301258 ,  -0.01809403],
+                   [ 0.3788079,  -0.1372873,   0.35434687,  0.20454064, -0.04078848, -0.09946087, -0.2027599,   0.19840254, -0.12262261,  0.06562128 , 0.29020017 , 0.43140668 ,-0.09658588 , 0.15039024  ,0.24742872],
+                   [ 0.18992792, -0.17389436,  0.03162403,  0.20005585,  0.10293522,  0.24948657, 0.02246702,  0.1482857,  -0.24862324, 0.0509105 ,  0.28931317 , 0.04461443 , 0.27775693, -0.18330258 , 0.19372188],
+                   [-0.4077571,  -0.4536428,   0.0310387,   0.00897048, -0.17130235,  0.2102663, -0.17879683, -0.03603431, -0.54440916,  0.16584025, -0.15136701, -0.21926962 ,0.2994472 ,  0.20180902 ,-0.03515889],
+                   [ 0.03682056,  0.06254029,  0.10705017,  0.2855802,   0.07971316,  0.12113541, 0.22383296,  0.0475619,   0.0769119 ,  0.29066333 , 0.19141804 , 0.1839004, 0.06116962 , 0.05876729, -0.04839096],
+                   [-0.07914645, -0.41158962,  0.08221883, -0.27771807, -0.30962795,  0.05533732, -0.18677846, -0.25403783, -0.26449376, -0.32969782, 0.08447118 ,-0.13923635, 0.32498366 , 0.17729907, -0.02145309],
+                   [-0.23405465,  0.33809108, -0.16229361, -0.3087442,   0.1370236,   0.10981056, 0.31744522,  0.2003892,   0.17322032, -0.3834765,  -0.20695694 ,-0.22243984 ,-0.18081029 ,-0.12313795 , 0.1117189 ],
+                   [-0.1735019,   0.13646919,  0.04760357, -0.10301195,  0.2116021,   0.19800907, 0.16246402,  0.19655582,  0.10112382, -0.29254773,  0.02134238, -0.15936801 ,0.22505698 ,-0.20352027 , 0.00617974],
+                   [-0.47545335, -0.03543708,  0.33188787, -0.18989903,  0.17334226, -0.08094673, -0.17345487,  0.16186918, -0.19694225,  0.23402572 , 0.21176508 , 0.36081126  ,0.04482256  ,0.10945642 , 0.24901721],
+                   [ 0.09145346,  0.3033115,   0.07041733,  0.269421,    0.33184344, -0.43185735, 0.04182111, -0.2606338,  -0.07230805,  0.34386557 , 0.04117974 , 0.2735862 ,-0.21979412 ,-0.39942962 ,-0.05347738],
+                   [-0.2458906,  -0.17295888,  0.17572993, -0.16750306, -0.04331319, -0.1302697, 0.04920837, -0.17688185, -0.28935012, -0.00181187,  0.05119095, -0.21166085, 0.28118524 , 0.30365553, -0.08699615],
+                   [-0.17117275,  0.13982967,  0.03994733, -0.18439938,  0.06066066,  0.20356238, 0.26318577,  0.13987048,  0.11686132, -0.1414943,   0.09491344 ,-0.16758879 ,0.17369547 ,-0.07593594 , 0.21296199],
+                   [-0.22286011, -0.36023656,  0.06416219,  0.00373144,  0.05358181,  0.0453698,  -0.14823712, -0.04037526, -0.3266057,  -0.1822823 ,  0.01892915 ,-0.22653894, 0.41647363 , 0.30905 ,   -0.12152804]])
+        self.b2 = np.array([-0.15701608,  0.21241052, -0.04425916 , 0.29685053,  0.02592342  ,0.22159299, 0.35339344 , 0.27034247,  0.24216592,  0.01729353,  0.17984119  ,0.24684756 , 0.04864732 ,-0.05702746 ,-0.00817463])
+        self.W3 = np.array([[-0.24112652, -0.17300823, -0.22581346, -0.17378807 , 0.2267796 ,  0.09720906, -0.2581274 ,  0.01984236 , 0.11005274, -0.01383745 , 0.07419428 , 0.10673151, 0.09215149, -0.2784376,   0.01176911],
+                   [ 0.17592902,  0.18784754,  0.04826571 , 0.278032,    0.02352758 ,-0.38702127 , 0.17677751, -0.58581984 , 0.32431626, -0.00250795,  0.04899384,  0.30579197,  -0.2645137, -0.07526777 ,-0.42729756],
+                   [ 0.21709543, -0.23441778, -0.15954229,  0.0801096,   0.00072494,  0.21779856 , -0.24553113 ,-0.00369862, -0.22674513 , 0.18703052, -0.23485912, -0.0395494,  0.211337 ,  -0.10309727, -0.21064246],
+                   [ 0.01086238 ,-0.03663111, -0.22799906, -0.27774605, -0.27416736 , 0.11806495,  -0.22398102, -0.31569317,  0.19850722 , 0.20558077, -0.17690367,  0.02349317 , -0.28066677, -0.17607473 , 0.12949096],
+                   [ 0.3005372,   0.3364506,  -0.03070569, -0.07862606, -0.1295259 , -0.04321953 , -0.06665245,  0.04153318 , 0.30722877 , 0.19064382,  0.41263387,  0.09224337,  -0.1117863,   0.15736763 , 0.20382139],
+                   [ 0.33549374 , 0.0959433 , -0.1715233,   0.33311912,  0.13572419 , 0.33886042,  0.22886772, -0.05682791, -0.54772985 ,-0.16026965 , 0.13495283 , 0.35866582  ,-0.09200568, -0.2094839 ,  0.29295024]])
+        self.b3 = np.array([-0.12463439,  0.3886971,  -0.24752599,  0.18188353, -0.03750344, -0.04374855])
+        self.W4 = np.array( [[ 0.10305467,  0.29747447, -0.29816818 , 0.19189268 , 0.34169126, -0.66999304],
+                   [-0.17908908,  0.1135093,  -0.11599031, -0.1962052,   0.1951216 ,  0.20692644],
+                   [-0.3996328,   0.3066203,   0.10145527, -0.30876827, -0.71084136,  0.12046086],
+                   [ 0.15516874 ,-0.70378023 ,-0.3743336,  -0.3220029 ,  0.16957524 , 0.3108893 ]])
+        self.b4 = np.array([ 0.37295556, -0.19684456 , 0.19884112 ,0.6644327 ])
+    
+    def cleanup(self):
+        self.X = None
+        self.Z1 = None
+        self.A1 = None
+        self.Z2 = None
+        self.A2 = None
+        self.Z3 = None
+        self.A3 = None
+        self.Z4 = None
+        self.A4 = None
+
+    def forward(self, X):
+        return do_forward_pass(self, X) # To be implemented below
+
+def do_forward_pass(model, X):
+    model.X = X
+    model.Z1 = np.dot(X, model.W1.T) + model.b1
+    model.A1 = np.maximum(0, model.Z1)
+    model.Z2 = np.dot(model.A1, model.W2.T) + model.b2
+    model.A2 = np.maximum(0, model.Z2)
+    model.Z3 = np.dot(model.A2, model.W3.T) + model.b3
+    model.A3 = np.maximum(0, model.Z3)
+    model.Z4 = np.dot(model.A3, model.W4.T) + model.b4
+    model.A4 = np.exp(model.Z4) / np.sum(np.exp(model.Z4), axis=1, keepdims=True)
+    return model.A4
 
 
+def predict_all(filename):
+    (X, y) = process_data(pd.read_csv(filename))
+    model = MLPModel()
+    predictions = do_forward_pass(model, X)
+    predictions = np.argmax(predictions, axis=1)
+    final_predictions = []
+    for i in predictions:
+        final_predictions.append(cities[i])
 
-
-if __name__ == '__main__':
-    file_name1 = "clean_dataset.csv"
-    predict_all(file_name1)
+    return predictions
