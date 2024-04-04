@@ -169,4 +169,4 @@ def predict_all(filename):
     for i in predictions:
         final_predictions.append(cities[i])
 
-    return predictions
+    return final_predictions
